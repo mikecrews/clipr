@@ -47,11 +47,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CliParserBuilder.cs" />
     <Compile Include="Core\ArgumentAttribute.cs" />
     <Compile Include="Core\IndexerValueStore.cs" />
     <Compile Include="Core\PropertyValueStore.cs" />
+    <Compile Include="Core\VerbParserConfig.cs" />
+    <Compile Include="DuplicateVerbException.cs" />
     <Compile Include="Fluent\Verb.cs" />
-    <Compile Include="StaticEnumerationAttribute.cs" />
+    <Compile Include="Attributes\StaticEnumerationAttribute.cs" />
     <Compile Include="Usage\EnumerationDescriptionAttribute.cs" />
     <Compile Include="Utils\AttributeConverter.cs" />
     <Compile Include="ArgumentIntegrityException.cs" />
@@ -68,10 +71,10 @@
     <Compile Include="Core\AttributeParserConfig.cs" />
     <Compile Include="Utils\CaseInsensitiveCharComparer.cs" />
     <Compile Include="CliParser.cs" />
-    <Compile Include="ApplicationInfoAttribute.cs" />
+    <Compile Include="Attributes\ApplicationInfoAttribute.cs" />
     <Compile Include="Utils\DotNet35Extensions.cs" />
     <Compile Include="Utils\DotNet40Extensions.cs" />
-    <Compile Include="MutuallyExclusiveGroupAttribute.cs" />
+    <Compile Include="Attributes\MutuallyExclusiveGroupAttribute.cs" />
     <Compile Include="Fluent\ArgumentBase.cs" />
     <Compile Include="Fluent\Consumes.cs" />
     <Compile Include="Fluent\FluentExtensions.cs" />
@@ -85,23 +88,23 @@
     <Compile Include="Core\ParserConfig.cs" />
     <Compile Include="Core\ParserExit.cs" />
     <Compile Include="Core\ParsingContext.cs" />
-    <Compile Include="Triggers\ITrigger.cs" />
+    <Compile Include="Triggers\ITerminatingTrigger.cs" />
     <Compile Include="Utils\StringExtensions.cs" />
     <Compile Include="Triggers\TriggerBase.cs" />
     <Compile Include="Usage\ExecutingAssemblyVersion.cs" />
     <Compile Include="Usage\IVersion.cs" />
-    <Compile Include="PostParseAttribute.cs" />
+    <Compile Include="Attributes\PostParseAttribute.cs" />
     <Compile Include="Utils\StaticEnumerationConverter.cs" />
-    <Compile Include="VerbAttribute.cs" />
+    <Compile Include="Attributes\VerbAttribute.cs" />
     <Compile Include="Usage\AutomaticHelpGenerator.cs" />
     <Compile Include="DuplicateArgumentException.cs" />
     <Compile Include="Usage\IHelpGenerator.cs" />
-    <Compile Include="NamedArgumentAttribute.cs" />
+    <Compile Include="Attributes\NamedArgumentAttribute.cs" />
     <Compile Include="NumArgsConstraint.cs" />
     <Compile Include="ParseAction.cs" />
     <Compile Include="ParseException.cs" />
     <Compile Include="ParserOptions.cs" />
-    <Compile Include="PositionalArgumentAttribute.cs" />
+    <Compile Include="Attributes\PositionalArgumentAttribute.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Utils\PropertyExtensions.cs" />
     <Compile Include="Usage\ResourceKeyAttribute.cs" />
@@ -109,7 +112,6 @@
     <Compile Include="Utils\StringTypeConverter.cs" />
     <Compile Include="Core\IValueStoreDefinition.cs" />
   </ItemGroup>
-  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

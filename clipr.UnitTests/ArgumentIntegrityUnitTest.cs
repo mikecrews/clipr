@@ -34,10 +34,10 @@ namespace clipr.UnitTests
         public void ParseArgument_WithArgumentsOfDifferingCaseWhenCaseInsensitive_ThrowsException()
         {
             var opt = new DuplicateArgumentWhenCaseInsensitive();
-            var parser = new CliParser<DuplicateArgumentWhenCaseInsensitive>(
-                opt, ParserOptions.CaseInsensitive);
 
-            AssertEx.Throws<DuplicateArgumentException>(() => parser.Parse("-n tim -n robert".Split()));
+            AssertEx.Throws<DuplicateArgumentException>(() => 
+                new CliParser<DuplicateArgumentWhenCaseInsensitive>(
+                    opt, ParserOptions.CaseInsensitive));
         }
 
         internal class DuplicateArguments
@@ -52,9 +52,8 @@ namespace clipr.UnitTests
         [TestMethod]
         public void ParseArgument_WithDuplicateArguments_ThrowsException()
         {
-            var parser = new CliParser<DuplicateArguments>(new DuplicateArguments());
             AssertEx.Throws<DuplicateArgumentException>(
-                () => parser.Parse("-n orange".Split()));
+                () => new CliParser<DuplicateArguments>(new DuplicateArguments()));
         }
 
         #endregion
@@ -78,9 +77,9 @@ namespace clipr.UnitTests
 
         #endregion
 
-        #region NumArgs cannot equal zero.
+        #region NumArgs cannot equal zero unless it's the lower bound
 
-        internal class ArgumentCountLessThanOne
+        internal class NamedArgumentExactCountLessThanOne
         {
             [NamedArgument('s', NumArgs = 0)]
             public List<string> Args { get; set; }
@@ -88,10 +87,52 @@ namespace clipr.UnitTests
 
         [TestMethod]
         [ExpectedException(typeof(AggregateException))]
-        public void Argument_WithCountLessThanOneThrows_ExceptionOnInitialize()
+        public void NamedArgument_WithExactCountLessThanOneThrows_ExceptionOnInitialize()
         {
-            new CliParser<ArgumentCountLessThanOne>(
-                new ArgumentCountLessThanOne());
+            new CliParser<NamedArgumentExactCountLessThanOne>(
+                new NamedArgumentExactCountLessThanOne());
+        }
+
+        internal class NamedArgumentUpperBoundCountLessThanOne
+        {
+            [NamedArgument('s', NumArgs = 0, Constraint = NumArgsConstraint.AtMost)]
+            public List<string> Args { get; set; }
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(AggregateException))]
+        public void NamedArgument_WithUpperBoundCountLessThanOneThrows_ExceptionOnInitialize()
+        {
+            new CliParser<NamedArgumentUpperBoundCountLessThanOne>(
+                new NamedArgumentUpperBoundCountLessThanOne());
+        }
+
+        internal class PositionalArgumentExactCountLessThanOne
+        {
+            [PositionalArgument(0, NumArgs = 0)]
+            public List<string> Args { get; set; }
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(AggregateException))]
+        public void PositionalArgument_WithExactCountLessThanOneThrows_ExceptionOnInitialize()
+        {
+            new CliParser<PositionalArgumentExactCountLessThanOne>(
+                new PositionalArgumentExactCountLessThanOne());
+        }
+
+        internal class PositionalArgumentUpperBoundCountLessThanOne
+        {
+            [PositionalArgument(0, NumArgs = 0, Constraint = NumArgsConstraint.AtMost)]
+            public List<string> Args { get; set; }
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(AggregateException))]
+        public void PositionalArgument_WithUpperBoundCountLessThanOneThrows_ExceptionOnInitialize()
+        {
+            new CliParser<PositionalArgumentUpperBoundCountLessThanOne>(
+                new PositionalArgumentUpperBoundCountLessThanOne());
         }
 
         #endregion
@@ -474,5 +515,53 @@ namespace clipr.UnitTests
         }
 
         #endregion
+
+        [TestMethod]
+        public void PositionalArgument_WithLowerBoundCountEqualsZero_ParsesNoArguments()
+        {
+            var opts = new PositionalArgumentUnitTest.PositionalArgumentLowerBoundCountEqualsZero();
+            var arguments = new string[0];
+            var parser = new CliParser<PositionalArgumentUnitTest.PositionalArgumentLowerBoundCountEqualsZero>(opts);
+
+            parser.Parse(arguments);
+
+            Assert.AreEqual(0, opts.Args.Count);
+        }
+
+        [TestMethod]
+        public void PositionalArgument_WithLowerBoundCountEqualsZero_ParsesAllArguments()
+        {
+            var opts = new PositionalArgumentUnitTest.PositionalArgumentLowerBoundCountEqualsZero();
+            var arguments = new[] { "first", "second" };
+            var parser = new CliParser<PositionalArgumentUnitTest.PositionalArgumentLowerBoundCountEqualsZero>(opts);
+
+            parser.Parse(arguments);
+
+            Assert.AreEqual(2, opts.Args.Count);
+        }
+
+        [TestMethod]
+        public void PositionalArgument_WithMultiplePositionalArgumentsAndLowerBoundCountEqualsZero_ParsesOtherArguments()
+        {
+            var opts = new PositionalArgumentUnitTest.MultiplePositionalArgumentLowerBoundCountEqualsZero();
+            var arguments = new[] { "fixed" };
+            var parser = new CliParser<PositionalArgumentUnitTest.MultiplePositionalArgumentLowerBoundCountEqualsZero>(opts);
+
+            parser.Parse(arguments);
+
+            Assert.AreEqual(0, opts.Args.Count);
+        }
+
+        [TestMethod]
+        public void PositionalArgument_WithMultiplePositionalArgumentsAndLowerBoundCountEqualsZero_ParsesAllArguments()
+        {
+            var opts = new PositionalArgumentUnitTest.MultiplePositionalArgumentLowerBoundCountEqualsZero();
+            var arguments = new[] { "fixed", "first", "second" };
+            var parser = new CliParser<PositionalArgumentUnitTest.MultiplePositionalArgumentLowerBoundCountEqualsZero>(opts);
+
+            parser.Parse(arguments);
+
+            Assert.AreEqual(2, opts.Args.Count);
+        }
     }
 }

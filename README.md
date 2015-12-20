@@ -22,49 +22,80 @@ to take the arguments already sent to any Console project and fill a
 class with those values, even if they contain custom Types. Here's a quick
 but powerful example of the objects this library enables you to build:
 
-    [ApplicationInfo(Description = "This is a set of options.")]
-    public class Options
+```csharp
+[ApplicationInfo(Description = "This is a set of options.")]
+public class Options
+{
+    [NamedArgument('v', "verbose", Action = ParseAction.Count,
+        Description = "Increase the verbosity of the output.")]
+    public int Verbosity { get; set; }
+
+    [PositionalArgument(0, MetaVar = "OUT",
+        Description = "Output file.")]
+    public string OutputFile { get; set; }
+
+    [PositionalArgument(1, MetaVar = "N",
+        NumArgs = 1,
+        Constraint = NumArgsConstraint.AtLeast,
+        Description = "Numbers to sum.")]
+    public List<int> Numbers { get; set; } 
+}
+
+static void Main()
+{
+    var opt = CliParser.Parse<Options>(
+        "-vvv output.txt 1 2 -1 7".Split());
+    Console.WriteLine(opt.Verbosity);
+    // >>> 3
+
+    Console.WriteLine(opt.OutputFile);
+    // >>> output.txt
+
+    var sum = 0;
+    foreach (var number in opt.Numbers)
     {
-        [NamedArgument('v', "verbose", Action = ParseAction.Count,
-            Description = "Increase the verbosity of the output.")]
-        public int Verbosity { get; set; }
-
-        [PositionalArgument(0, MetaVar = "OUT",
-            Description = "Output file.")]
-        public string OutputFile { get; set; }
-
-        [PositionalArgument(1, MetaVar = "N",
-            NumArgs = 1,
-            Constraint = NumArgsConstraint.AtLeast,
-            Description = "Numbers to sum.")]
-        public List<int> Numbers { get; set; } 
+        sum += number;
     }
-
-    static void Main()
-    {
-        var opt = CliParser.Parse<Options>(
-            "-vvv output.txt 1 2 -1 7".Split());
-        Console.WriteLine(opt.Verbosity);
-        // >>> 3
-
-        Console.WriteLine(opt.OutputFile);
-        // >>> output.txt
-
-        var sum = 0;
-        foreach (var number in opt.Numbers)
-        {
-            sum += number;
-        }
-        Console.WriteLine(sum);
-        // >>> 9
-    }
+    Console.WriteLine(sum);
+    // >>> 9
+}
+```
 
 ##Changelog
 
+###Master
+
+* Rework fluent parser into separate ParserBuilder class.
+  Now all "configuration" happens there and a parser is built
+  from the resulting config.
+* Further strengthen the separation between "config", which defines
+  the argument configuration properties, and "context", which orchestrates
+  the parsing state machine. Allows the parser to be (more) threadsafe --
+  no guarantees that it's truly threadsafe right now.
+* Add new Parser Option that allows partial (prefix) matching on long named
+  arguments, so long as the name is unambiguous. For example, with an argument
+  named "checkout" you could use "--check" so long as there isn't another
+  conflicting argument name (such as "checkin").
+* Simplified AutomatedHelpGenerator, exposing the parser's configuration
+  object so that you can generate help messages on-demand.
+
+###2015-04-24 1.4.7
+
+* Fix bug in sample where negative numbers in varargs parsing
+(like a List<>) would prematurely terminate the parser.
+
+###2015-03-28 1.4.6
+
+* Relax restrictions preventing NumArgs=0 when it's the lower bound
+  (NumArgsConstraint.AtLeast). It is still disallowed for the exact
+  count and the upper bound.
+
 ###2014-08-21 1.4.5
+
 * Implement static enumeration parsing (see below)
 
 ###2014-08-15 1.4.4
+
 * Implement required named arguments (via property)
 
 ###2014-07-30 1.4.1
@@ -160,8 +191,9 @@ There are two types of arguments that may be defined: Named and Positional
 arguments.
 
 * Named arguments are those set off by short names or long names
-  (such as `-v` or `--verbose`). They are always optional
-  (in that the parser will not show an error if one is not specified) and may
+  (such as `-v` or `--verbose`). They are optional (in that the parser 
+  will not show an error if one is not specified) unless explicitly
+  marked as required and may
   be given in any order (eg. the parser does not care if you use
   `-v --input file.txt` or `--input file.txt -v`).
 * Positional arguments, on the other hand, are always required and must be
@@ -230,7 +262,23 @@ arguments must consume an exact number of values.
 
 ##Default Argument Values
 
-Set default values for a property in the config object's constructor.
+Set default values for a property in the config object's constructor. If a
+value is provided on the command line, it will overwrite the default value.
+
+```csharp
+public class Options
+{
+    public Options()
+    {
+        OutputFile = "out.txt";
+    }
+
+    [PositionalArgument(0, MetaVar = "OUT",
+        Description = "Output file.")]
+    public string OutputFile { get; set; }
+}
+```
+    
 
 ##Force Positional Argument Parsing
 
@@ -301,6 +349,17 @@ Take the example above, this is the generated help documentation:
      --version      Display version information.
      -v, --verbose  Increase the verbosity of the output.
 
+You may also programmatically generate the help and usage for a class:
+
+```csharp
+var parser = new CliParser<Options>(new Options());
+var help = new AutomaticHelpGenerator<Options>();
+// Gets the usage message, a short summary of available arguments.
+Console.WriteLine(help.GetUsage(parser.Config));
+// Gets the full help message with argument descriptions.
+Console.WriteLine(help.GetHelp(parser.Config));
+```
+
 Version information is similarly auto-generated from the version string
 compiled into the application using this library. In the future there
 will be an easy way to specify the version manually, but until then you'll
@@ -344,38 +403,40 @@ a common set of criteria for identifying and parsing them.
 
 Sample:
 
-    [StaticEnumeration]
-    internal abstract class SomeEnum
+```csharp
+[StaticEnumeration]
+internal abstract class SomeEnum
+{
+    public static readonly SomeEnum First = new EnumSubclass();
+
+    public abstract void DoSomeWork();
+
+    public class EnumSubclass : SomeEnum
     {
-        public static readonly SomeEnum First = new EnumSubclass();
-
-        public abstract void DoSomeWork();
-
-        public class EnumSubclass : SomeEnum
-        {
-            public override void DoSomeWork() { }
-        }
+        public override void DoSomeWork() { }
     }
+}
 
-    internal class StaticEnumerationOptions
-    {
-        [NamedArgument('e')]
-        public SomeEnum Value { get; set; } 
-    }
+internal class StaticEnumerationOptions
+{
+    [NamedArgument('e')]
+    public SomeEnum Value { get; set; } 
+}
 
-    internal class StaticEnumerationExplicitOptions
-    {
-        [NamedArgument('e')]
-        [StaticEnumeration]  // Allowed in case attr is not defined on SomeEnum
-        public SomeEnum Value { get; set; } 
-    }
+internal class StaticEnumerationExplicitOptions
+{
+    [NamedArgument('e')]
+    [StaticEnumeration]  // Allowed in case attr is not defined on SomeEnum
+    public SomeEnum Value { get; set; } 
+}
 
-    public static void Main()
-    {
-      var obj = CliParser.Parse<StaticEnumerationOptions>(
-          "-e first".Split());
-      Assert.AreSame(SomeEnum.First, obj.Value);
-    }
+public static void Main()
+{
+  var obj = CliParser.Parse<StaticEnumerationOptions>(
+      "-e first".Split());
+  Assert.AreSame(SomeEnum.First, obj.Value);
+}
+```
 
 ##Fluent Interface
 
@@ -389,54 +450,58 @@ from each of these may be used to configure the individual argument and
 you may return to the parser by chaining the `And` property when finished
 configuring.
 
-    var opt = new Options();
+```csharp
+var opt = new Options();
 
-    new CliParser<Options>(opt)
-        .HasNamedArgument(o => o.Verbosity)
-            .WithShortName('v')
-            .CountsInvocations()
-    .And
-        .HasNamedArgument(o => o.OutputFile)
-            .WithShortName()
-    .And
-        .HasPositionalArgumentList(o => o.Numbers)
-            .HasDescription("These are numbers.")
-            .Consumes.AtLeast(1)
-    .And
-        .Parse("-vvv -o out.txt 3 4 5 6".Split());
+new CliParserBuilder<Options>(opt)
+    .HasNamedArgument(o => o.Verbosity)
+        .WithShortName('v')
+        .CountsInvocations()
+.And
+    .HasNamedArgument(o => o.OutputFile)
+        .WithShortName()
+.And
+    .HasPositionalArgumentList(o => o.Numbers)
+        .HasDescription("These are numbers.")
+        .Consumes.AtLeast(1)
+.And.Parser
+    .Parse("-vvv -o out.txt 3 4 5 6".Split());
 
-    Console.WriteLine(opt.Verbosity);
-    // >>> 3
+Console.WriteLine(opt.Verbosity);
+// >>> 3
 
-    Console.WriteLine(opt.OutputFile);
-    // >>> output.txt
+Console.WriteLine(opt.OutputFile);
+// >>> output.txt
     
-    var sum = 0;
-    foreach (var number in opt.Numbers)
-    {
-        sum += number;
-    }
-    Console.WriteLine(sum);
-    // >>> 9
+var sum = 0;
+foreach (var number in opt.Numbers)
+{
+    sum += number;
+}
+Console.WriteLine(sum);
+// >>> 9
+```
 
 You may also add a Verb to the parser config with this syntax:
 
-    var opt = new Options();
-    new CliParser<Options>(opt)
-        .HasVerb("add", c => c.AddVerb,
-                  // Note that in the Fluent Interface, you're nesting parsers
-                  // Theoretically this means you can nest an 
-                  // Attribute-configured parser inside a Fluent parser
-                  // (although you cannot do the opposite, due to limitations
-                  // with Attributes).
-                  new CliParser<AddFileOptions>(new AddFileOptions())
-                      .HasPositionalArgument(c => c.Filename)
-                      .And)  // A necessary evil if defining inline.
-    .And
-        .Parse("add myfile.txt");
+```csharp
+var opt = new Options();
+new CliParserBuilder<Options>(opt)
+    .HasVerb("add", c => c.AddVerb,
+              // Note that in the Fluent Interface, you're nesting parsers
+              // Theoretically this means you can nest an 
+              // Attribute-configured parser inside a Fluent parser
+              // (although you cannot do the opposite, due to limitations
+              // with Attributes).
+              new CliParserBuilder<AddFileOptions>(new AddFileOptions())
+                  .HasPositionalArgument(c => c.Filename)
+                  .And)  // A necessary evil if defining inline.
+.And.Parser
+    .Parse("add myfile.txt");
 
-    Console.WriteLine(opt.AddVerb);
-    // myfile.txt
+Console.WriteLine(opt.AddVerb);
+// myfile.txt
+```
 
 ##Dictionary Backend
 
@@ -450,21 +515,23 @@ configuration properties at runtime (which is as good as you're going to
 get, given that .Net currently doesn't allow ExpandoObject or dynamic
 in Expressions).
 
-    var key = 1;
-    var opt = new Dictionary<int, string>();
-    var parser = new CliParser<Dictionary<int, string>>(opt);
-    parser.HasNamedArgument(c => c[key])
-            .WithShortName('n');
+```csharp
+var key = 1;
+var opt = new Dictionary<int, string>();
+var parser = new CliParser<Dictionary<int, string>>(opt);
+parser.HasNamedArgument(c => c[key])
+        .WithShortName('n');
 
-    parser.Parse("-n frank".Split());
+parser.Parse("-n frank".Split());
 
-    Console.WriteLine("Parsed Keys:");
-    foreach (var kv in opt)
-    {
-        Console.WriteLine("\t{0}: {1}", kv.Key, kv.Value);
-    }
-    // Parsed Keys:
-    //    1: frank
+Console.WriteLine("Parsed Keys:");
+foreach (var kv in opt)
+{
+    Console.WriteLine("\t{0}: {1}", kv.Key, kv.Value);
+}
+// Parsed Keys:
+//    1: frank
+```
 
 Notes:
 

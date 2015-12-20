@@ -11,8 +11,7 @@ namespace clipr.Core
     /// <summary>
     /// Configuration for the parser.
     /// </summary>
-    /// <typeparam name="T">Option class.</typeparam>
-    public interface IParserConfig<T> where T : class
+    public interface IParserConfig
     {
         /// <summary>
         /// The character prefix to use for designating arguments
@@ -21,15 +20,25 @@ namespace clipr.Core
         char ArgumentPrefix { get; set; }
 
         /// <summary>
-        /// The list of registered triggers.
+        /// The (non-whitespace) character separating a long 
+        /// argument name from its value.
         /// </summary>
-        IEnumerable<ITrigger<T>> Triggers { get; set; }
+        char LongOptionSeparator { get; }
 
         /// <summary>
-        /// Initialize all triggers.
+        /// Configuration options for the parser.
         /// </summary>
-        /// <param name="triggers"></param>
-        void InitializeTriggers(IEnumerable<ITrigger<T>> triggers);
+        ParserOptions Options { get; }
+
+        /// <summary>
+        /// The list of registered triggers.
+        /// </summary>
+        IEnumerable<ITerminatingTrigger> Triggers { get; set; }
+
+        /// <summary>
+        /// The list of short name arguments.
+        /// </summary>
+        Dictionary<char, IShortNameArgument> ShortNameArguments { get; } 
 
         /// <summary>
         /// Retrieve the short character from an argument or throw an exception.
@@ -47,6 +56,11 @@ namespace clipr.Core
         char? GetShortName(IShortNameArgument arg, string errorMessage);
 
         /// <summary>
+        /// The list of long name arguments.
+        /// </summary>
+        Dictionary<string, ILongNameArgument> LongNameArguments { get; } 
+
+        /// <summary>
         /// Retrieve the long name from an argument or throw an exception.
         /// </summary>
         /// <param name="arg"></param>
@@ -60,42 +74,58 @@ namespace clipr.Core
         /// <param name="errorMessage"></param>
         /// <returns></returns>
         string GetLongName(ILongNameArgument arg, string errorMessage);
+
+        /// <summary>
+        /// List of all positional arguments.
+        /// </summary>
+        List<IPositionalArgument> PositionalArguments { get; }
+
+        /// <summary>
+        /// List of all verbs in the parser.
+        /// </summary>
+        Dictionary<string, IVerbParserConfig> Verbs { get; }
+
+        /// <summary>
+        /// List of methods to be executed after parsing is finished.
+        /// </summary>
+        List<MethodInfo> PostParseMethods { get; }
+
+        /// <summary>
+        /// List of mutually exclusive groups that are required.
+        /// </summary>
+        HashSet<string> RequiredMutuallyExclusiveArguments { get; }
+
+        /// <summary>
+        /// List of named arguments that are required.
+        /// </summary>
+        HashSet<string> RequiredNamedArguments { get; }
     }
 
-    internal class VerbConfig
+    internal abstract class ParserConfig<T> : IParserConfig where T : class
     {
-        public object Object { get; set; }
-
-        public IParsingContext Context { get; set; }
-
-        public IValueStoreDefinition Store { get; set; }
-    }
-
-    internal abstract class ParserConfig<T> : IParserConfig<T> where T : class
-    {
-        public readonly char[] LongOptionSeparator = { '=' };
+        public char LongOptionSeparator { get { return '='; } }
 
         public char ArgumentPrefix { get; set; }
 
-        protected readonly ParserOptions Options; 
+        public ParserOptions Options { get; private set; }
 
-        internal readonly Dictionary<char, IShortNameArgument> ShortNameArguments;
+        public Dictionary<char, IShortNameArgument> ShortNameArguments { get; protected set; }
 
-        internal readonly Dictionary<string, ILongNameArgument> LongNameArguments;
+        public Dictionary<string, ILongNameArgument> LongNameArguments { get; protected set; }
 
-        internal readonly List<IPositionalArgument> PositionalArguments;
+        public List<IPositionalArgument> PositionalArguments { get; protected set; }
 
-        internal readonly Dictionary<string, VerbConfig> Verbs;
+        public Dictionary<string, IVerbParserConfig> Verbs { get; protected set; }
 
-        internal readonly List<MethodInfo> PostParseMethods;
+        public List<MethodInfo> PostParseMethods { get; protected set; }
 
-        internal readonly HashSet<string> RequiredMutuallyExclusiveArguments;
+        public HashSet<string> RequiredMutuallyExclusiveArguments { get; protected set; }
 
-        internal readonly HashSet<string> RequiredNamedArguments; 
+        public HashSet<string> RequiredNamedArguments { get; protected set; }
 
-        public IEnumerable<ITrigger<T>> Triggers { get; set; }
+        public IEnumerable<ITerminatingTrigger> Triggers { get; set; }
 
-        protected ParserConfig(ParserOptions options, IEnumerable<ITrigger<T>> triggers)
+        protected ParserConfig(ParserOptions options, IEnumerable<ITerminatingTrigger> triggers)
         {
             Options = options;
             ArgumentPrefix = '-';
@@ -112,7 +142,7 @@ namespace clipr.Core
             }
 
             PositionalArguments = new List<IPositionalArgument>();
-            Verbs = new Dictionary<string, VerbConfig>();
+            Verbs = new Dictionary<string, IVerbParserConfig>();
             PostParseMethods = new List<MethodInfo>();
             RequiredMutuallyExclusiveArguments = new HashSet<string>();
             RequiredNamedArguments = new HashSet<string>();
@@ -120,7 +150,7 @@ namespace clipr.Core
             InitializeTriggers(triggers);
         }
 
-        public void InitializeTriggers(IEnumerable<ITrigger<T>> triggers)
+        public void InitializeTriggers(IEnumerable<ITerminatingTrigger> triggers)
         {
             Triggers = triggers;
             if (triggers == null)

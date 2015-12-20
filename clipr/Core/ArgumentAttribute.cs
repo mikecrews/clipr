@@ -7,7 +7,7 @@ namespace clipr.Core
     /// <summary>
     /// Base class for various argument types.
     /// </summary>
-    [AttributeUsage(AttributeTargets.Property)]
+    [AttributeUsage(AttributeTargets.Property, AllowMultiple = false)]
     public abstract class ArgumentAttribute : Attribute, IArgument
     {
         /// <inheritdoc/>
@@ -79,9 +79,7 @@ namespace clipr.Core
         {
             get
             {
-                return NumArgs != 0 && 
-                    (Constraint != NumArgsConstraint.Exactly ||
-                    NumArgs > 1);
+                return Constraint != NumArgsConstraint.Exactly || NumArgs > 1;
             }
         }
 

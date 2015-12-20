@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text;
@@ -15,8 +16,7 @@ namespace clipr.Usage
     /// Builds usage information automatically from the associated
     /// type.
     /// </summary>
-    /// <typeparam name="T">Type to inspect.</typeparam>
-    public class AutomaticHelpGenerator<T> : TriggerBase, IHelpGenerator<T> where T : class
+    public class AutomaticHelpGenerator<T> : TriggerBase, IHelpGenerator
     {
         /// <inheritdoc/>
         public override string Name { get { return "HelpGenerator"; } }
@@ -68,7 +68,7 @@ namespace clipr.Usage
         private readonly Func<IPositionalArgument, int> _argumentIndex =
             p => p.Index;
 
-        private readonly Func<INamedArgumentBase, string> _argumentDisplayName =
+        private readonly Func<INamedArgument, string> _argumentDisplayName =
             p => p.MetaVar ?? p.Name;
 
         /// <summary>
@@ -80,11 +80,8 @@ namespace clipr.Usage
             LongName = "help";
         }
 
-        /// <summary>
-        /// Get the usage as a string.
-        /// </summary>
-        /// <returns></returns>
-        public string GetUsage()
+        /// <inheritdoc/>
+        public string GetUsage(IParserConfig config)
         {
             var assembly = Assembly.GetEntryAssembly();
             var builder = new StringBuilder();
@@ -94,35 +91,34 @@ namespace clipr.Usage
                 assembly.Location : Assembly.GetExecutingAssembly().CodeBase));
             builder.Append(" ");
 
-            foreach (var prop in typeof(T).GetProperties()
-                .Where(p => p.GetCustomAttribute<NamedArgumentAttribute>() != null))
+            foreach (var arg in config.LongNameArguments.Values.Cast<INamedArgument>()
+                .Concat(config.ShortNameArguments.Values.Cast<INamedArgument>())
+                .Distinct())
             {
-                var attr = prop.GetCustomAttribute<NamedArgumentAttribute>();
-                var meta = attr.MetaVar ?? prop.Name;
-
                 builder.Append("[ ");
-                builder.Append(String.Join("|", GetArgumentNames(attr).ToArray()));
+                builder.Append(String.Join("|", GetArgumentNames(arg).ToArray()));
                 builder.Append(" ");
 
-                if (attr.Action.ConsumesArgumentValues())
+                if (arg.Action.ConsumesArgumentValues())
                 {
-                    if (attr.Constraint == NumArgsConstraint.AtMost)
+                    if (arg.Constraint == NumArgsConstraint.AtMost)
                     {
                         builder.Append("[ ");
                     }
 
-                    for (var i = 0; i < attr.NumArgs; i++)
+                    for (var i = 0; i < arg.NumArgs; i++)
                     {
-                        builder.Append(meta.ToUpperInvariant());
+                        if(arg.MetaVar == null) continue;
+                        builder.Append(arg.MetaVar.ToUpper(CultureInfo.CurrentCulture));
                         builder.Append(" ");
                     }
 
-                    if (attr.Constraint == NumArgsConstraint.AtLeast)
+                    if (arg.Constraint == NumArgsConstraint.AtLeast)
                     {
                         builder.Append("... ");
                     }
 
-                    if (attr.Constraint == NumArgsConstraint.AtMost)
+                    if (arg.Constraint == NumArgsConstraint.AtMost)
                     {
                         builder.Append("] ");
                     }
@@ -131,35 +127,44 @@ namespace clipr.Usage
                 builder.Append("] ");
             }
 
-            foreach (var prop in typeof(T).GetProperties()
-                .Where(p => p.GetCustomAttribute<PositionalArgumentAttribute>() != null)
-                .OrderBy(p => p.GetCustomAttribute<PositionalArgumentAttribute>().Index))
+            foreach (var arg in config.PositionalArguments.OrderBy(p => p.Index))
             {
-                var attr = prop.GetCustomAttribute<PositionalArgumentAttribute>();
-                var meta = attr.MetaVar ?? prop.Name;
-
-                if (attr.Constraint == NumArgsConstraint.AtMost)
+                if (arg.Constraint == NumArgsConstraint.AtMost)
                 {
                     builder.Append("[ ");
                 }
 
-                for (var i = 0; i < attr.NumArgs; i++)
+                for (var i = 0; i < arg.NumArgs; i++)
                 {
-                    builder.Append(meta.ToUpperInvariant());
+                    if (arg.MetaVar == null) continue;
+                    builder.Append(arg.MetaVar.ToUpperInvariant());
                     builder.Append(" ");
                 }
 
-                if (prop.PropertyType.IsSubclassOf(typeof (Enum)))
+                var store = arg.Store;
+                
+                if (store.Type.IsSubclassOf(typeof (Enum)))
                 {
-                    AddEnumFormat(builder, prop);
+                    AddEnumFormat(builder, store);
+                }
+                if (store.Type.GetCustomAttribute<StaticEnumerationAttribute>() != null)
+                {
+                    AddStaticEnumFormat(builder, store);
                 }
 
-                if (attr.Constraint == NumArgsConstraint.AtLeast)
+                var staticEnum = (store.GetCustomAttribute<StaticEnumerationAttribute>() ??
+                                  store.Type.GetCustomAttribute<StaticEnumerationAttribute>()) != null;
+                if (staticEnum)
+                {
+                    AddStaticEnumFormat(builder, store);
+                }
+
+                if (arg.Constraint == NumArgsConstraint.AtLeast)
                 {
                     builder.Append("... ");
                 }
 
-                if (attr.Constraint == NumArgsConstraint.AtMost)
+                if (arg.Constraint == NumArgsConstraint.AtMost)
                 {
                     builder.Append("] ");
                 }
@@ -168,10 +173,10 @@ namespace clipr.Usage
             return builder.ToString();
         }
 
-        private static void AddEnumFormat(StringBuilder builder, PropertyInfo prop)
+        private static void AddEnumFormat(StringBuilder builder, IValueStoreDefinition store)
         {
             builder.Append("{");
-            var names = Enum.GetNames(prop.PropertyType);
+            var names = Enum.GetNames(store.Type);
             for (var i = 0; i < names.Length; i++)
             {
                 builder.Append(names[i]);
@@ -183,39 +188,28 @@ namespace clipr.Usage
             builder.Append("}");
         }
 
-        /// <summary>
-        /// Get all help information.
-        /// </summary>
-        /// <param name="config"></param>
-        /// <returns></returns>
-        public string GetHelp(IParserConfig<T> config)
+        private static void AddStaticEnumFormat(StringBuilder builder, IValueStoreDefinition store)
         {
-            var positionalArgs = typeof (T).GetProperties()
-                .Where(p => p.GetCustomAttribute<PositionalArgumentAttribute>() != null)
-                .Select(p => p.GetCustomAttribute<PositionalArgumentAttribute>() as IPositionalArgument)
-                .ToList();
+            builder.Append("{");
+            var names = store.Type.GetFields(
+                BindingFlags.Public | BindingFlags.Static)
+                .Where(f => f.IsInitOnly &&
+                            store.Type.IsAssignableFrom(f.FieldType))
+                .Select(f => f.Name)
+                .ToArray();
+            builder.Append(String.Join("|", names));
+            builder.Append("}");
+        }
 
-            var namedArgs = typeof(T).GetProperties()
-                .Where(p => p.GetCustomAttribute<NamedArgumentAttribute>() != null)
-                .Select(p => p.GetCustomAttribute<NamedArgumentAttribute>() as INamedArgumentBase)
-                .ToList();
+        /// <inheritdoc/>
+        public string GetHelp(IParserConfig config)
+        {
+            var positionalArgs = config.PositionalArguments.ToList();
 
-            foreach (var trigger in config.Triggers)
-            {
-                var names = new List<string>();
-                if (trigger.ShortName.HasValue)
-                {
-                    names.Add("-" + trigger.ShortName);
-                }
-                if (trigger.LongName != null)
-                {
-                    names.Add("--" + trigger.LongName);
-                }
-                if (names.Any())
-                {
-                    namedArgs.Add(trigger);
-                }
-            }
+            var namedArgs = config.LongNameArguments.Values.Cast<INamedArgument>()
+                .Concat(config.ShortNameArguments.Values.Cast<INamedArgument>())
+                .Distinct()
+                .ToList();
 
             var positionalDisplay = positionalArgs
                 .OrderBy(_argumentIndex)
@@ -232,7 +226,7 @@ namespace clipr.Usage
 
             var helpDataBuilder = new StringBuilder();
 
-            helpDataBuilder.AppendLine(GetUsage());
+            helpDataBuilder.AppendLine(GetUsage(config));
 
             var metadata = typeof (T).GetCustomAttribute<ApplicationInfoAttribute>();
             if (metadata != null && metadata.Description != null)
@@ -309,19 +303,21 @@ namespace clipr.Usage
             return helpDataBuilder.ToString().TrimEnd();
         }
 
-        private static ArgumentDisplay GetArgumentsForDisplay(IArgument attr)
+        private static ArgumentDisplay GetArgumentsForDisplay(IPositionalArgument arg)
         {
-            List<string> names;
+            var names = new List<string>();
+            if(arg.MetaVar != null) names.Add(arg.MetaVar);
+            return GetArgumentsForDisplay(names, arg);
+        }
 
-            if (attr is INamedArgument)  // TODO I don't like this
-            {
-                names = GetArgumentNames(attr as INamedArgument);
-            }
-            else
-            {
-                names = GetArgumentNames(attr);
-            }
+        private static ArgumentDisplay GetArgumentsForDisplay(INamedArgument attr)
+        {
+            var names = GetArgumentNames(attr);
+            return GetArgumentsForDisplay(names, attr);
+        }
 
+        private static ArgumentDisplay GetArgumentsForDisplay(List<string> names, IArgument attr)
+        {
             if (!names.Any())
             {
                 names.Add(attr.Name);
@@ -329,13 +325,8 @@ namespace clipr.Usage
             return new ArgumentDisplay
             {
                 ArgumentNames = String.Join(", ", names.ToArray()),
-                Description = attr.Description
+                Description = attr.Description ?? ""
             };
-        }
-
-        private static List<string> GetArgumentNames(IArgument attr)
-        {
-            return new List<string>{ attr.MetaVar };
         }
 
         private static List<string> GetArgumentNames(INamedArgument attr)
@@ -371,7 +362,7 @@ namespace clipr.Usage
         /// Action to perform when this trigger is parsed.
         /// </summary>
         /// <param name="config"></param>
-        public void OnParse(IParserConfig<T> config)
+        public void OnParse(IParserConfig config)
         {
             Console.Error.WriteLine(GetHelp(config));
         }
